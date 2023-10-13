@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Face Recognition with face-api.js</title>
+  <!-- <script src="tfjs.js"></script> -->
+  <script src="face-api.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+    <video id="video" width="600" height="450" autoplay></video>
+
+    <script>
+
+        // load the neccesarry script
+        Promise.all([
+            faceapi.nets.ssdMobilenetv1.loadFromUri("/models"),
+            faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+            faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+            faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+            faceapi.nets.faceExpressionNet.loadFromUri("/models"),
+            faceapi.nets.ageGenderNet.loadFromUri("/models")
+        ])
+        .then(startVideo)
+        //.then(getLabeledFaceDescriptions)
+        .then(faceRecognition);
+
+        function startVideo() {
+            // open the webcam
+            navigator.getUserMedia(
+                { video: {} },
+                stream => (video.srcObject = stream),
+                err => console.error(err)
+            );
+        }
+
+        function getLabeledFaceDescriptions() {
+            const labels = ['Jonathan Antivo', 'Jonathan Developer']; // this are a directory images located at labeled_images
+            
+            return Promise.all(
+                labels.map(async label => {
+                const descriptions = [];
+                for (let i = 1; i <= 2; i++) {
+                    const img = await faceapi
+                        .fetchImage(`labeled_images/${label}/${i}.PNG`);
+                        /** this is the format note image start with  
+                         * depending on how many loop you have
+                        Jonathan Antivo
+                            1.jpg or png
+                            2.jpg or png
+                            3.jpg or png
+                            4.jpg or png
+                            5.jpg or png
+                            so on..
+                        Juan Magtangol
+                            1.jpg or png
+                            2.jpg or png
+                            3.jpg or png
+                            4.jpg or png
+                            5.jpg or png
+                        person3
+                            1.jpg or png
+                            2.jpg or png
+                            3.jpg or png
+                            4.jpg or png
+                            5.jpg or png
+                        */ 
+
+                        // check your image EXtension wether it is jpg or png 
+                        // Replace with your image paths
+                    
+                    const detections = await faceapi
+                        .detectSingleFace(img)
+                        .withFaceLandmarks()
+                        .withFaceDescriptor();
+
+                    descriptions.push(detections.descriptor);
+                }
+                return new faceapi.LabeledFaceDescriptors(label, descriptions);
+                })
+            );
+        }
+
+        async function faceRecognition() {
+
+            video.addEventListener("play", async () => {
+                console.log('playing..')
+                const labeledFaceDescriptors = await getLabeledFaceDescriptions();
+                const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors);
+
+                const canvas = faceapi.createCanvasFromMedia(video);
+                document.body.append(canvas);
+
+                const displaySize = { width: video.width, height: video.height };
+                faceapi.matchDimensions(canvas, displaySize);
+
+                setInterval(async () => {
+                    const detections = await faceapi
+                    .detectAllFaces(video)
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+                    //const detections = await faceapi
+                        // .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                        //         .withFaceLandmarks()
+                        //         .withFaceExpressions()
+                        //         .withAgeAndGender();
+
+                        //         const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                        //         console.log(resizedDetections);
+                                
+                    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+
+                    
+                    faceapi.draw.drawDetections(canvas, resizedDetections);
+                    faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+                    
+                    const results = resizedDetections.map((d) => {
+                        return faceMatcher.findBestMatch(d.descriptor);
+                    });
+
+                    results.forEach((result, i) => {
+                        const box = resizedDetections[i].detection.box;
+                        const drawBox = new faceapi.draw.DrawBox(box, {
+                            label: result,
+                        });
+
+                        console.log(drawBox, result)
+
+                        drawBox.draw(canvas);
+                    });
+                }, 100);
+            });
+        }
+ 
+    </script>
+</body>
+</html>
